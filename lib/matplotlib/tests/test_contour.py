@@ -127,8 +127,9 @@ def test_contour_manual_moveto():
     assert clabels[0].get_text() == "0"
 
 
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
 @image_comparison(['contour_disconnected_segments'],
-                  remove_text=True, style='mpl20', extensions=['png'])
+                  remove_text=True, style='mpl20', extensions=['png'], tol=0.01)
 def test_contour_label_with_disconnected_segments():
     x, y = np.mgrid[-1:1:21j, -1:1:21j]
     z = 1 / np.sqrt(0.01 + (x + 0.3) ** 2 + y ** 2)
@@ -229,7 +230,8 @@ def test_lognorm_levels(n_levels):
     assert len(visible_levels) <= n_levels + 1
 
 
-@image_comparison(['contour_datetime_axis.png'], style='mpl20')
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
+@image_comparison(['contour_datetime_axis.png'], style='mpl20', tol=0.3)
 def test_contour_datetime_axis():
     fig = plt.figure()
     fig.subplots_adjust(hspace=0.4, top=0.98, bottom=.15)
@@ -616,8 +618,7 @@ def test_contourf_legend_elements():
     cs = plt.contourf(h, levels=[10, 30, 50],
                       colors=['#FFFF00', '#FF00FF', '#00FFFF'],
                       extend='both')
-    cs.cmap.set_over('red')
-    cs.cmap.set_under('blue')
+    cs.cmap = cs.cmap.with_extremes(over='red', under='blue')
     cs.changed()
     artists, labels = cs.legend_elements()
     assert labels == ['$x \\leq -1e+250s$',
@@ -865,3 +866,15 @@ def test_contourf_rasterize():
     circle = mpatches.Circle([0.5, 0.5], 0.5, transform=ax.transAxes)
     cs = ax.contourf(data, clip_path=circle, rasterized=True)
     assert cs._rasterized
+
+
+@check_figures_equal(extensions=["png"])
+def test_contour_aliases(fig_test, fig_ref):
+    data = np.arange(100).reshape((10, 10)) ** 2
+    fig_test.add_subplot().contour(data, linestyle=":")
+    fig_ref.add_subplot().contour(data, linestyles="dotted")
+
+
+def test_contour_singular_color():
+    with pytest.raises(TypeError):
+        plt.figure().add_subplot().contour([[0, 1], [2, 3]], color="r")

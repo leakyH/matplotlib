@@ -31,6 +31,16 @@ reference.
 * `Pillow <https://pillow.readthedocs.io/en/latest/>`_ (>= 9.0)
 * `pyparsing <https://pypi.org/project/pyparsing/>`_ (>= 3)
 
+.. note::
+
+   With **conda packages**, this set of minimal dependencies is realized in
+   the ``matplotlib-base`` conda package. Other packages in the conda
+   ecosystem that depend on Matplotlib should depend on ``matplotlib-base``.
+
+   The ``matplotlib`` conda package additionally comes with ``pyside6``
+   to have a working GUI backend out of the box for end users. This should
+   primarily be used to define end-user environments. See also the
+   `conda forge documentation <https://conda-forge.org/docs/maintainer/knowledge_base/#matplotlib>`__.
 
 .. _optional_dependencies:
 
@@ -220,7 +230,7 @@ Build dependencies
 Python
 ------
 
-``pip`` normally builds packages using :external+pip:doc:`build isolation <reference/build-system/pyproject-toml>`,
+``pip`` normally builds packages using :external+pip:doc:`build isolation <reference/build-system>`,
 which means that ``pip`` installs the dependencies listed here for the
 duration of the build process. However, build isolation is disabled via the the
 :external+pip:ref:`--no-build-isolation <install_--no-build-isolation>` flag
@@ -234,7 +244,7 @@ means that the dependencies must be explicitly installed, either by :ref:`creati
 - `setuptools_scm <https://pypi.org/project/setuptools-scm/>`_ (>= 7).  Used to
   update the reported ``mpl.__version__`` based on the current git commit.
   Also a runtime dependency for editable installs.
-- `NumPy <https://numpy.org>`_ (>= 1.22).  Also a runtime dependency.
+- NumPy_ (>= 1.22).  Also a runtime dependency.
 
 
 .. _compile-build-dependencies:
@@ -377,7 +387,7 @@ them will be skipped by pytest.
 .. _pandas: https://pypi.org/project/pandas/
 .. _pikepdf: https://pypi.org/project/pikepdf/
 .. _psutil: https://pypi.org/project/psutil/
-.. _pytz: https://fonts.google.com/noto/use#faq
+.. _pytz: https://pypi.org/project/pytz/
 .. _pytest-cov: https://pytest-cov.readthedocs.io/en/latest/
 .. _pytest-timeout: https://pypi.org/project/pytest-timeout/
 .. _pytest-xdist: https://pypi.org/project/pytest-xdist/
@@ -473,7 +483,7 @@ Optional
 The documentation can be built without Inkscape and optipng, but the build
 process will raise various warnings.
 
-* `Inkscape <https://inkscape.org>`_
+* Inkscape_
 * `optipng <http://optipng.sourceforge.net>`_
 * the font `xkcd script <https://github.com/ipython/xkcd-font/>`_ or `Comic Neue <https://github.com/crozynski/comicneue>`_
 * the font "Times New Roman"

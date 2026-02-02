@@ -44,7 +44,7 @@ import math
 import numpy as np
 from numpy.linalg import inv
 
-from matplotlib import _api
+from matplotlib import _api, _docstring
 from matplotlib._path import affine_transform, count_bboxes_overlapping_bbox
 from .path import Path
 
@@ -376,6 +376,29 @@ class BboxBase(TransformNode):
 
     def get_points(self):
         raise NotImplementedError
+
+    def _is_finite(self):
+        """
+        Return whether the bounding box is finite and not degenerate to a
+        single point.
+
+        We count the box as finite if neither width nor height are infinite
+        and at least one direction is non-zero; i.e. a point is not finite,
+        but a horizontal or vertical line is.
+
+        .. versionadded:: 3.11
+
+        Notes
+        -----
+        We keep this private for now because concise naming is hard and
+        because we are not sure how universal the concept is. It is
+        currently used only for filtering bboxes to be included in
+        tightbbox calculation, but I'm unsure whether single points
+        should be included there as well.
+        """
+        width = self.width
+        height = self.height
+        return (width > 0 or height > 0) and width < np.inf and height < np.inf
 
     def containsx(self, x):
         """
@@ -1418,7 +1441,7 @@ class Transform(TransformNode):
                 return True
         return False
 
-    def contains_branch_seperately(self, other_transform):
+    def contains_branch_separately(self, other_transform):
         """
         Return whether the given branch is a sub-tree of this transform on
         each separate dimension.
@@ -1426,15 +1449,20 @@ class Transform(TransformNode):
         A common use for this method is to identify if a transform is a blended
         transform containing an Axes' data transform. e.g.::
 
-            x_isdata, y_isdata = trans.contains_branch_seperately(ax.transData)
+            x_isdata, y_isdata = trans.contains_branch_separately(ax.transData)
 
         """
         if self.output_dims != 2:
-            raise ValueError('contains_branch_seperately only supports '
+            raise ValueError('contains_branch_separately only supports '
                              'transforms with 2 output dimensions')
         # for a non-blended transform each separate dimension is the same, so
         # just return the appropriate shape.
         return (self.contains_branch(other_transform), ) * 2
+
+    # Permanent alias for backwards compatibility (historical typo)
+    def contains_branch_seperately(self, other_transform):
+        """:meta private:"""
+        return self.contains_branch_separately(other_transform)
 
     def __sub__(self, other):
         """
@@ -2185,7 +2213,7 @@ class _BlendedMixin:
         else:
             return NotImplemented
 
-    def contains_branch_seperately(self, transform):
+    def contains_branch_separately(self, transform):
         return (self._x.contains_branch(transform),
                 self._y.contains_branch(transform))
 
@@ -2411,14 +2439,14 @@ class CompositeGenericTransform(Transform):
         for left, right in self._b._iter_break_from_left_to_right():
             yield self._a + left, right
 
-    def contains_branch_seperately(self, other_transform):
+    def contains_branch_separately(self, other_transform):
         # docstring inherited
         if self.output_dims != 2:
-            raise ValueError('contains_branch_seperately only supports '
+            raise ValueError('contains_branch_separately only supports '
                              'transforms with 2 output dimensions')
         if self == other_transform:
             return (True, True)
-        return self._b.contains_branch_seperately(other_transform)
+        return self._b.contains_branch_separately(other_transform)
 
     depth = property(lambda self: self._a.depth + self._b.depth)
     is_affine = property(lambda self: self._a.is_affine and self._b.is_affine)
@@ -2837,7 +2865,7 @@ class TransformedPatchPath(TransformedPath):
         super()._revalidate()
 
 
-def nonsingular(vmin, vmax, expander=0.001, tiny=1e-15, increasing=True):
+def _nonsingular(vmin, vmax, expander=0.001, tiny=1e-15, increasing=True):
     """
     Modify the endpoints of a range as needed to avoid singularities.
 
@@ -2895,7 +2923,13 @@ def nonsingular(vmin, vmax, expander=0.001, tiny=1e-15, increasing=True):
     return vmin, vmax
 
 
-def interval_contains(interval, val):
+@_api.deprecated("3.11")
+@_docstring.copy(_nonsingular)
+def nonsingular(vmin, vmax, expander=0.001, tiny=1e-15, increasing=True):
+    return _nonsingular(vmin, vmax, expander, tiny, increasing)
+
+
+def _interval_contains(interval, val):
     """
     Check, inclusively, whether an interval includes a given value.
 
@@ -2915,6 +2949,12 @@ def interval_contains(interval, val):
     if a > b:
         a, b = b, a
     return a <= val <= b
+
+
+@_api.deprecated("3.11")
+@_docstring.copy(_interval_contains)
+def interval_contains(interval, val):
+    return _interval_contains(interval, val)
 
 
 def _interval_contains_close(interval, val, rtol=1e-10):
@@ -2946,7 +2986,7 @@ def _interval_contains_close(interval, val, rtol=1e-10):
     return a - rtol <= val <= b + rtol
 
 
-def interval_contains_open(interval, val):
+def _interval_contains_open(interval, val):
     """
     Check, excluding endpoints, whether an interval includes a given value.
 
@@ -2964,6 +3004,12 @@ def interval_contains_open(interval, val):
     """
     a, b = interval
     return a < val < b or a > val > b
+
+
+@_api.deprecated("3.11")
+@_docstring.copy(_interval_contains_open)
+def interval_contains_open(interval, val):
+    return _interval_contains_open(interval, val)
 
 
 def offset_copy(trans, fig=None, x=0.0, y=0.0, units='inches'):

@@ -76,6 +76,7 @@ _default_filetypes = {
     'tif': 'Tagged Image File Format',
     'tiff': 'Tagged Image File Format',
     'webp': 'WebP Image Format',
+    'avif': 'AV1 Image File Format',
 }
 _default_backends = {
     'eps': 'matplotlib.backends.backend_ps',
@@ -93,6 +94,7 @@ _default_backends = {
     'tif': 'matplotlib.backends.backend_agg',
     'tiff': 'matplotlib.backends.backend_agg',
     'webp': 'matplotlib.backends.backend_agg',
+    'avif': 'matplotlib.backends.backend_agg',
 }
 
 
@@ -1260,7 +1262,7 @@ class LocationEvent(Event):
     xdata, ydata : float or None
         Data coordinates of the mouse within *inaxes*, or *None* if the mouse
         is not over an Axes.
-    modifiers : frozenset
+    modifiers : frozenset[str]
         The keyboard modifiers currently being pressed (except for KeyEvent).
     """
 
@@ -1411,10 +1413,27 @@ class MouseEvent(LocationEvent):
         self.step = step
         self.dblclick = dblclick
 
+    @classmethod
+    def _from_ax_coords(cls, name, ax, xy, *args, **kwargs):
+        """
+        Generate a synthetic event at a given axes coordinate.
+
+        This method is intended for creating events during testing.  The event
+        can be emitted by calling its ``_process()`` method.
+
+        args and kwargs are mapped to `.MouseEvent.__init__` parameters,
+        starting with `button`.
+        """
+        x, y = ax.transData.transform(xy)
+        event = cls(name, ax.figure.canvas, x, y, *args, **kwargs)
+        event.inaxes = ax
+        event.xdata, event.ydata = xy  # Force exact xy to avoid fp roundtrip issues.
+        return event
+
     def __str__(self):
         return (f"{self.name}: "
                 f"xy=({self.x}, {self.y}) xydata=({self.xdata}, {self.ydata}) "
-                f"button={self.button} dblclick={self.dblclick} "
+                f"button={self.button} dblclick={self.dblclick} step={self.step} "
                 f"inaxes={self.inaxes}")
 
 
@@ -1502,6 +1521,22 @@ class KeyEvent(LocationEvent):
     def __init__(self, name, canvas, key, x=0, y=0, guiEvent=None):
         super().__init__(name, canvas, x, y, guiEvent=guiEvent)
         self.key = key
+
+    @classmethod
+    def _from_ax_coords(cls, name, ax, xy, key, *args, **kwargs):
+        """
+        Generate a synthetic event at a given axes coordinate.
+
+        This method is intended for creating events during testing.  The event
+        can be emitted by calling its ``_process()`` method.
+        """
+        # Separate from MouseEvent._from_ax_coords instead of being defined in the base
+        # class, due to different parameter order in the constructor signature.
+        x, y = ax.transData.transform(xy)
+        event = cls(name, ax.figure.canvas, key, x, y, *args, **kwargs)
+        event.inaxes = ax
+        event.xdata, event.ydata = xy  # Force exact xy to avoid fp roundtrip issues.
+        return event
 
 
 # Default callback for key events.
@@ -1705,6 +1740,10 @@ class FigureCanvasBase:
 
     filetypes = _default_filetypes
 
+    # global counter to assign unique ids to blit backgrounds
+    # see _get_blit_background_id()
+    _last_blit_background_id = 0
+
     @_api.classproperty
     def supports_blit(cls):
         """If this Canvas sub-class supports blitting."""
@@ -1728,8 +1767,9 @@ class FigureCanvasBase:
         self.toolbar = None  # NavigationToolbar2 will set me
         self._is_idle_drawing = False
         # We don't want to scale up the figure DPI more than once.
-        figure._original_dpi = figure.dpi
+        figure._original_dpi = getattr(figure, '_original_dpi', figure.dpi)
         self._device_pixel_ratio = 1
+        self._blit_backgrounds = {}
         super().__init__()  # Typically the GUI widget init (if any).
 
     callbacks = property(lambda self: self.figure._canvas_callbacks)
@@ -1804,6 +1844,51 @@ class FigureCanvasBase:
 
     def blit(self, bbox=None):
         """Blit the canvas in bbox (default entire canvas)."""
+
+    @classmethod
+    def _get_blit_background_id(cls):
+        """
+        Get a globally unique id that can be used to store a blit background.
+
+        Blitting support is canvas-dependent, so blitting mechanisms should
+        store their backgrounds in the canvas, more precisely in
+        ``canvas._blit_backgrounds[id]``. The id must be obtained via this
+        function to ensure it is globally unique.
+
+        The content of ``canvas._blit_backgrounds[id]`` is not specified.
+        We leave this freedom to the blitting mechanism.
+
+        Blitting mechanisms must not expect that a background that they
+        have stored is still there at a later time. The canvas may have
+        been switched out, or we may add other mechanisms later that
+        invalidate blit backgrounds (e.g. dpi changes).
+        Therefore, always query as `_blit_backgrounds.get(id)` and be
+        prepared for a None return value.
+
+        Note: The blit background API is still experimental and may change
+        in the future without warning.
+        """
+        cls._last_blit_background_id += 1
+        return cls._last_blit_background_id
+
+    def _release_blit_background_id(self, bb_id):
+        """
+        Release a blit background id that is no longer needed.
+
+        This removes the respective entry from the internal storage, i.e.
+        the ``canvas._blit_backgrounds`` dict, and thus allows to free the
+        associated memory.
+
+        After releasing the id you must not use it anymore.
+
+        It is safe to release an id that has not been used with the canvas
+        or that has already been released.
+
+        Note: The blit background API is still experimental and may change
+        in the future without warning.
+        """
+        if bb_id in self._blit_backgrounds:
+            del self._blit_backgrounds[bb_id]
 
     def inaxes(self, xy):
         """
@@ -2539,6 +2624,62 @@ def button_press_handler(event, canvas=None, toolbar=None):
             toolbar.forward()
 
 
+def scroll_handler(event, canvas=None, toolbar=None):
+    ax = event.inaxes
+    if ax is None:
+        return
+    if ax.name != "rectilinear":
+        # zooming is currently only supported on rectilinear axes
+        return
+
+    if toolbar is None:
+        toolbar = (canvas or event.canvas).toolbar
+
+    if toolbar is None:
+        # technically we do not need a toolbar, but until wheel zoom was
+        # introduced, any interactive modification was only possible through
+        # the toolbar tools. For now, we keep the restriction that a toolbar
+        # is required for interactive navigation.
+        return
+
+    if event.key in {"control", "x", "y"}:  # zoom towards the mouse position
+        toolbar.push_current()
+
+        xmin, xmax = ax.get_xlim()
+        ymin, ymax = ax.get_ylim()
+        (xmin, ymin), (xmax, ymax) = ax.transScale.transform(
+            [(xmin, ymin), (xmax, ymax)])
+
+        # mouse position in scaled (e.g., log) data coordinates
+        x, y = ax.transScale.transform((event.xdata, event.ydata))
+
+        scale_factor = 0.85 ** event.step
+        # Determine which axes to scale based on key
+        zoom_x = event.key in {"control", "x"}
+        zoom_y = event.key in {"control", "y"}
+
+        if zoom_x:
+            new_xmin = x - (x - xmin) * scale_factor
+            new_xmax = x + (xmax - x) * scale_factor
+        else:
+            new_xmin, new_xmax = xmin, xmax
+
+        if zoom_y:
+            new_ymin = y - (y - ymin) * scale_factor
+            new_ymax = y + (ymax - y) * scale_factor
+        else:
+            new_ymin, new_ymax = ymin, ymax
+
+        inv_scale = ax.transScale.inverted()
+        (new_xmin, new_ymin), (new_xmax, new_ymax) = inv_scale.transform(
+            [(new_xmin, new_ymin), (new_xmax, new_ymax)])
+
+        ax.set_xlim(new_xmin, new_xmax)
+        ax.set_ylim(new_ymin, new_ymax)
+
+        ax.figure.canvas.draw_idle()
+
+
 class NonGuiException(Exception):
     """Raised when trying show a figure in a non-GUI backend."""
     pass
@@ -2618,11 +2759,14 @@ class FigureManagerBase:
 
         self.key_press_handler_id = None
         self.button_press_handler_id = None
+        self.scroll_handler_id = None
         if rcParams['toolbar'] != 'toolmanager':
             self.key_press_handler_id = self.canvas.mpl_connect(
                 'key_press_event', key_press_handler)
             self.button_press_handler_id = self.canvas.mpl_connect(
                 'button_press_event', button_press_handler)
+            self.scroll_handler_id = self.canvas.mpl_connect(
+                'scroll_event', scroll_handler)
 
         self.toolmanager = (ToolManager(canvas.figure)
                             if mpl.rcParams['toolbar'] == 'toolmanager'
@@ -2723,7 +2867,9 @@ class FigureManagerBase:
             f"shown")
 
     def destroy(self):
-        pass
+        # managers may have swapped the canvas to a GUI-framework specific one.
+        # restore the base canvas when the manager is destroyed.
+        self.canvas.figure._set_base_canvas()
 
     def full_screen_toggle(self):
         pass
@@ -2762,10 +2908,6 @@ class _Mode(str, Enum):
 
     def __str__(self):
         return self.value
-
-    @property
-    def _navigate_mode(self):
-        return self.name if self is not _Mode.NONE else None
 
 
 class NavigationToolbar2:
@@ -3037,8 +3179,6 @@ class NavigationToolbar2:
         else:
             self.mode = _Mode.PAN
             self.canvas.widgetlock(self)
-        for a in self.canvas.figure.get_axes():
-            a.set_navigate_mode(self.mode._navigate_mode)
 
     _PanInfo = namedtuple("_PanInfo", "button axes cid")
 
@@ -3099,8 +3239,6 @@ class NavigationToolbar2:
         else:
             self.mode = _Mode.ZOOM
             self.canvas.widgetlock(self)
-        for a in self.canvas.figure.get_axes():
-            a.set_navigate_mode(self.mode._navigate_mode)
 
     _ZoomInfo = namedtuple("_ZoomInfo", "button start_xy axes cid cbar")
 

@@ -29,7 +29,7 @@ except ImportError:
     from numpy import VisibleDeprecationWarning
 
 import matplotlib
-from matplotlib import _api, _c_internal_utils
+from matplotlib import _api, _c_internal_utils, mlab
 
 
 class _ExceptionInfo:
@@ -43,16 +43,20 @@ class _ExceptionInfo:
     users and result in incorrect tracebacks.
     """
 
-    def __init__(self, cls, *args):
+    def __init__(self, cls, *args, notes=None):
         self._cls = cls
         self._args = args
+        self._notes = notes if notes is not None else []
 
     @classmethod
     def from_exception(cls, exc):
-        return cls(type(exc), *exc.args)
+        return cls(type(exc), *exc.args, notes=getattr(exc, "__notes__", []))
 
     def to_exception(self):
-        return self._cls(*self._args)
+        exc = self._cls(*self._args)
+        for note in self._notes:
+            exc.add_note(note)
+        return exc
 
 
 def _get_running_interactive_framework():
@@ -690,7 +694,21 @@ def safe_masked_invalid(x, copy=False):
     try:
         xm = np.ma.masked_where(~(np.isfinite(x)), x, copy=False)
     except TypeError:
-        return x
+        if len(x.dtype.descr) == 1:
+            # Arrays with dtype 'object' get returned here.
+            # For example the 'c' kwarg of scatter, which supports multiple types.
+            # `plt.scatter([3, 4], [2, 5], c=[(1, 0, 0), 'y'])`
+            return x
+        else:
+            # In case of a dtype with multiple fields
+            # for example image data using a MultiNorm
+            try:
+                mask = np.empty(x.shape, dtype=np.dtype('bool, '*len(x.dtype.descr)))
+                for dd, dm in zip(x.dtype.descr, mask.dtype.descr):
+                    mask[dm[0]] = ~np.isfinite(x[dd[0]])
+                xm = np.ma.array(x, mask=mask, copy=False)
+            except TypeError:
+                return x
     return xm
 
 
@@ -1430,7 +1448,7 @@ def _reshape_2D(X, name):
         return result
 
 
-def violin_stats(X, method, points=100, quantiles=None):
+def violin_stats(X, method=("GaussianKDE", "scott"), points=100, quantiles=None):
     """
     Return a list of dictionaries of data which can be used to draw a series
     of violin plots.
@@ -1439,21 +1457,40 @@ def violin_stats(X, method, points=100, quantiles=None):
     dictionary.
 
     Users can skip this function and pass a user-defined set of dictionaries
-    with the same keys to `~.axes.Axes.violinplot` instead of using Matplotlib
+    with the same keys to `~.axes.Axes.violin` instead of using Matplotlib
     to do the calculations. See the *Returns* section below for the keys
     that must be present in the dictionaries.
 
     Parameters
     ----------
-    X : array-like
+    X : 1D array or sequence of 1D arrays or 2D array
         Sample data that will be used to produce the gaussian kernel density
-        estimates. Must have 2 or fewer dimensions.
+        estimates. Possible values:
 
-    method : callable
+        - 1D array: Statistics are computed for that array.
+        - sequence of 1D arrays: Statistics are computed for each array in the sequence.
+        - 2D array: Statistics are computed for each column in the array.
+
+    method : (name, bw_method) or callable,
         The method used to calculate the kernel density estimate for each
-        column of data. When called via ``method(v, coords)``, it should
-        return a vector of the values of the KDE evaluated at the values
-        specified in coords.
+        column of data. Valid values:
+
+        - a tuple of the form ``(name, bw_method)`` where *name* currently must
+          always be ``"GaussianKDE"`` and *bw_method* is the method used to
+          calculate the estimator bandwidth. Supported values are 'scott',
+          'silverman' or a float or a callable. If a float, this will be used
+          directly as `!kde.factor`.  If a callable, it should take a
+          `matplotlib.mlab.GaussianKDE` instance as its only parameter and
+          return a float.
+
+        - a callable with the signature ::
+
+             def method(data: ndarray, coords: ndarray) -> ndarray
+
+          It should return the KDE of *data* evaluated at *coords*.
+
+          .. versionadded:: 3.11
+             Support for ``(name, bw_method)`` tuple.
 
     points : int, default: 100
         Defines the number of points to evaluate each of the gaussian kernel
@@ -1481,6 +1518,20 @@ def violin_stats(X, method, points=100, quantiles=None):
         - max: The maximum value for this column of data.
         - quantiles: The quantile values for this column of data.
     """
+    if isinstance(method, tuple):
+        name, bw_method = method
+        if name != "GaussianKDE":
+            raise ValueError(f"Unknown KDE method name {name!r}. The only supported "
+                             'named method is "GaussianKDE"')
+
+        def _kde_method(x, coords):
+            # fallback gracefully if the vector contains only one value
+            if np.all(x[0] == x):
+                return (x[0] == coords).astype(float)
+            kde = mlab.GaussianKDE(x, bw_method)
+            return kde.evaluate(coords)
+
+        method = _kde_method
 
     # List of dictionaries describing each of the violins.
     vpstats = []
@@ -1780,7 +1831,7 @@ def normalize_kwargs(kw, alias_mapping=None):
         as an empty dict, to support functions with an optional parameter of
         the form ``props=None``.
 
-    alias_mapping : dict or Artist subclass or Artist instance, optional
+    alias_mapping : Artist subclass or Artist instance
         A mapping between a canonical name to a list of aliases, in order of
         precedence from lowest to highest.
 
@@ -1798,31 +1849,35 @@ def normalize_kwargs(kw, alias_mapping=None):
     """
     from matplotlib.artist import Artist
 
+    # deal with default value of alias_mapping
+    if (isinstance(alias_mapping, type) and issubclass(alias_mapping, Artist)
+          or isinstance(alias_mapping, Artist)):
+        alias_to_prop = getattr(alias_mapping, "_alias_to_prop", {})
+    else:
+        if alias_mapping is None:
+            alias_mapping = {}
+        _api.warn_deprecated("3.11", message=(
+            "Passing a dict or None as alias_mapping to normalize_kwargs is "
+            "deprecated since %(since)s and support will be removed "
+            "%(removal)s; pass an Artist instance or type instead."))
+        # Convert old format to new format.
+        alias_to_prop = {alias: prop for prop, aliases in alias_mapping.items()
+                         for alias in aliases}
+
     if kw is None:
         return {}
 
-    # deal with default value of alias_mapping
-    if alias_mapping is None:
-        alias_mapping = {}
-    elif (isinstance(alias_mapping, type) and issubclass(alias_mapping, Artist)
-          or isinstance(alias_mapping, Artist)):
-        alias_mapping = getattr(alias_mapping, "_alias_map", {})
+    canonicalized = {alias_to_prop.get(k, k): v for k, v in kw.items()}
+    if len(canonicalized) == len(kw):
+        return canonicalized
 
-    to_canonical = {alias: canonical
-                    for canonical, alias_list in alias_mapping.items()
-                    for alias in alias_list}
     canonical_to_seen = {}
-    ret = {}  # output dictionary
-
-    for k, v in kw.items():
-        canonical = to_canonical.get(k, k)
+    for k in kw:
+        canonical = alias_to_prop.get(k, k)
         if canonical in canonical_to_seen:
             raise TypeError(f"Got both {canonical_to_seen[canonical]!r} and "
                             f"{k!r}, which are aliases of one another")
         canonical_to_seen[canonical] = k
-        ret[canonical] = v
-
-    return ret
 
 
 @contextlib.contextmanager

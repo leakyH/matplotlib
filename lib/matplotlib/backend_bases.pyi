@@ -237,6 +237,7 @@ class LocationEvent(Event):
     inaxes: Axes | None
     xdata: float | None
     ydata: float | None
+    modifiers: frozenset[str]
     def __init__(
         self,
         name: str,
@@ -407,6 +408,11 @@ def button_press_handler(
     canvas: FigureCanvasBase | None = ...,
     toolbar: NavigationToolbar2 | None = ...,
 ) -> None: ...
+def scroll_handler(
+    event: MouseEvent,
+    canvas: FigureCanvasBase | None = ...,
+    toolbar: NavigationToolbar2 | None = ...,
+) -> None: ...
 
 class NonGuiException(Exception): ...
 
@@ -415,6 +421,7 @@ class FigureManagerBase:
     num: int | str
     key_press_handler_id: int | None
     button_press_handler_id: int | None
+    scroll_handler_id: int | None
     toolmanager: ToolManager | None
     toolbar: NavigationToolbar2 | ToolContainerBase | None
     def __init__(self, canvas: FigureCanvasBase, num: int | str) -> None: ...

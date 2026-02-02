@@ -1068,6 +1068,201 @@ def test_legend_labelcolor_rcparam_markerfacecolor_short():
         assert mpl.colors.same_color(text.get_color(), color)
 
 
+def assert_last_legend_patch_color(histogram, leg, expected_color,
+                                   facecolor=False, edgecolor=False):
+    """
+    Check that histogram color, legend handle color, and legend label color all
+    match the expected input. Provide facecolor and edgecolor flags to clarify
+    which feature to match.
+    """
+    label_color = leg.texts[-1].get_color()
+    patch = leg.get_patches()[-1]
+    histogram = histogram[-1][0]
+    assert mpl.colors.same_color(label_color, expected_color)
+    if facecolor:
+        assert mpl.colors.same_color(label_color, patch.get_facecolor())
+        assert mpl.colors.same_color(label_color, histogram.get_facecolor())
+    if edgecolor:
+        assert mpl.colors.same_color(label_color, patch.get_edgecolor())
+        assert mpl.colors.same_color(label_color, histogram.get_edgecolor())
+
+
+def test_legend_labelcolor_linecolor_histograms():
+    x = np.arange(10)
+
+    # testing c kwarg for bar, step, and stepfilled histograms
+    fig, ax = plt.subplots()
+    h = ax.hist(x, histtype='bar', color='r', label="red bar hist with a red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'r', facecolor=True)
+
+    h = ax.hist(x, histtype='step', color='g', label="green step hist, green label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'g', edgecolor=True)
+
+    h = ax.hist(x, histtype='stepfilled', color='b',
+                label="blue stepfilled hist with a blue label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'b', facecolor=True)
+
+    # testing c, fc, and ec combinations for bar histograms
+    h = ax.hist(x, histtype='bar', color='r', ec='b',
+                label="red bar hist with blue edges and a red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'r', facecolor=True)
+
+    h = ax.hist(x, histtype='bar', fc='r', ec='b',
+                label="red bar hist with blue edges and a red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'r', facecolor=True)
+
+    h = ax.hist(x, histtype='bar', fc='none', ec='b',
+                label="unfilled blue bar hist with a blue label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'b', edgecolor=True)
+
+    # testing c, and ec combinations for step histograms
+    h = ax.hist(x, histtype='step', color='r', ec='b',
+                label="blue step hist with a blue label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'b', edgecolor=True)
+
+    h = ax.hist(x, histtype='step', ec='b',
+                label="blue step hist with a blue label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'b', edgecolor=True)
+
+    # testing c, fc, and ec combinations for stepfilled histograms
+    h = ax.hist(x, histtype='stepfilled', color='r', ec='b',
+                label="red stepfilled hist, blue edges, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'r', facecolor=True)
+
+    h = ax.hist(x, histtype='stepfilled', fc='r', ec='b',
+                label="red stepfilled hist, blue edges, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'r', facecolor=True)
+
+    h = ax.hist(x, histtype='stepfilled', fc='none', ec='b',
+                label="unfilled blue stepfilled hist, blue label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'b', edgecolor=True)
+
+    h = ax.hist(x, histtype='stepfilled', fc='r', ec='none',
+                label="edgeless red stepfilled hist with a red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_patch_color(h, leg, 'r', facecolor=True)
+
+
+def assert_last_legend_linemarker_color(line_marker, leg, expected_color, color=False,
+                                        facecolor=False, edgecolor=False):
+    """
+    Check that line marker color, legend handle color, and legend label color all
+    match the expected input. Provide color, facecolor and edgecolor flags to clarify
+    which feature to match.
+    """
+    label_color = leg.texts[-1].get_color()
+    leg_marker = leg.get_lines()[-1]
+    assert mpl.colors.same_color(label_color, expected_color)
+    if color:
+        assert mpl.colors.same_color(label_color, leg_marker.get_color())
+        assert mpl.colors.same_color(label_color, line_marker.get_color())
+    if facecolor:
+        assert mpl.colors.same_color(label_color, leg_marker.get_markerfacecolor())
+        assert mpl.colors.same_color(label_color, line_marker.get_markerfacecolor())
+    if edgecolor:
+        assert mpl.colors.same_color(label_color, leg_marker.get_markeredgecolor())
+        assert mpl.colors.same_color(label_color, line_marker.get_markeredgecolor())
+
+
+def test_legend_labelcolor_linecolor_plot():
+    x = np.arange(5)
+
+    # testing line plot
+    fig, ax = plt.subplots()
+    l, = ax.plot(x, c='r', label="red line with a red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_linemarker_color(l, leg, 'r', color=True)
+
+    # testing c, fc, and ec combinations for maker plots
+    l, = ax.plot(x, 'o', c='r', label="red circles with a red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_linemarker_color(l, leg, 'r', color=True)
+
+    l, = ax.plot(x, 'o', c='r', mec='b', label="red circles, blue edges, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_linemarker_color(l, leg, 'r', color=True)
+
+    l, = ax.plot(x, 'o', mfc='r', mec='b', label="red circles, blue edges, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_linemarker_color(l, leg, 'r', facecolor=True)
+
+    # 'none' cases
+    l, = ax.plot(x, 'o', mfc='none', mec='b',
+                 label="blue unfilled circles, blue label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_linemarker_color(l, leg, 'b', edgecolor=True)
+
+    l, = ax.plot(x, 'o', mfc='r', mec='none', label="red edgeless circles, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_linemarker_color(l, leg, 'r', facecolor=True)
+
+    l, = ax.plot(x, 'o', c='none', mec='none',
+                 label="black label despite invisible circles for dummy entries")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_linemarker_color(l, leg, 'k')
+
+
+def assert_last_legend_scattermarker_color(scatter_marker, leg, expected_color,
+                                           facecolor=False, edgecolor=False):
+    """
+    Check that scatter marker color, legend handle color, and legend label color all
+    match the expected input. Provide facecolor and edgecolor flags to clarify
+    which feature to match.
+    """
+    label_color = leg.texts[-1].get_color()
+    leg_handle = leg.legend_handles[-1]
+    assert mpl.colors.same_color(label_color, expected_color)
+    if facecolor:
+        assert mpl.colors.same_color(label_color, leg_handle.get_facecolor())
+        assert mpl.colors.same_color(label_color, scatter_marker.get_facecolor())
+    if edgecolor:
+        assert mpl.colors.same_color(label_color, leg_handle.get_edgecolor())
+        assert mpl.colors.same_color(label_color, scatter_marker.get_edgecolor())
+
+
+def test_legend_labelcolor_linecolor_scatter():
+    x = np.arange(5)
+
+    # testing c, fc, and ec combinations for scatter plots
+    fig, ax = plt.subplots()
+    s = ax.scatter(x, x, c='r', label="red circles with a red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_scattermarker_color(s, leg, 'r', facecolor=True)
+
+    s = ax.scatter(x, x, c='r', ec='b', label="red circles, blue edges, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_scattermarker_color(s, leg, 'r', facecolor=True)
+
+    s = ax.scatter(x, x, fc='r', ec='b', label="red circles, blue edges, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_scattermarker_color(s, leg, 'r', facecolor=True)
+
+    # 'none' cases
+    s = ax.scatter(x, x, fc='none', ec='b', label="blue unfilled circles, blue label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_scattermarker_color(s, leg, 'b', edgecolor=True)
+
+    s = ax.scatter(x, x, fc='r', ec='none', label="red edgeless circles, red label")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_scattermarker_color(s, leg, 'r', facecolor=True)
+
+    s = ax.scatter(x, x, c='none', ec='none',
+                   label="black label despite invisible circles for dummy entries")
+    leg = ax.legend(labelcolor='linecolor')
+    assert_last_legend_scattermarker_color(s, leg, 'k')
+
+
 @pytest.mark.filterwarnings("ignore:No artists with labels found to put in legend")
 def test_get_set_draggable():
     legend = plt.legend()
@@ -1472,3 +1667,86 @@ def test_boxplot_legend_labels():
     bp4 = axs[3].boxplot(data, label='box A')
     assert bp4['medians'][0].get_label() == 'box A'
     assert all(x.get_label().startswith("_") for x in bp4['medians'][1:])
+
+
+def test_legend_linewidth():
+    """Test legend.linewidth parameter and rcParam."""
+    fig, ax = plt.subplots()
+    ax.plot([1, 2, 3], label='data')
+
+    # Test direct parameter
+    leg = ax.legend(linewidth=2.5)
+    assert leg.legendPatch.get_linewidth() == 2.5
+
+    # Test rcParam
+    with mpl.rc_context({'legend.linewidth': 3.0}):
+        fig, ax = plt.subplots()
+        ax.plot([1, 2, 3], label='data')
+        leg = ax.legend()
+        assert leg.legendPatch.get_linewidth() == 3.0
+
+    # Test None default (should inherit from patch.linewidth)
+    with mpl.rc_context({'legend.linewidth': None, 'patch.linewidth': 1.5}):
+        fig, ax = plt.subplots()
+        ax.plot([1, 2, 3], label='data')
+        leg = ax.legend()
+        assert leg.legendPatch.get_linewidth() == 1.5
+
+    # Test that direct parameter overrides rcParam
+    with mpl.rc_context({'legend.linewidth': 1.0}):
+        fig, ax = plt.subplots()
+        ax.plot([1, 2, 3], label='data')
+        leg = ax.legend(linewidth=4.0)
+        assert leg.legendPatch.get_linewidth() == 4.0
+
+
+def test_patchcollection_legend():
+    # Test that PatchCollection labels show up in legend and preserve visual
+    # properties (issue #23998)
+    fig, ax = plt.subplots()
+
+    pc = mcollections.PatchCollection(
+        [mpatches.Circle((0, 0), 1), mpatches.Circle((2, 0), 1)],
+        label="patch collection",
+        facecolor='red',
+        edgecolor='blue',
+        linewidths=3,
+        linestyle='--',
+    )
+    ax.add_collection(pc)
+    ax.autoscale_view()
+
+    leg = ax.legend()
+
+    # Check that the legend contains our label
+    assert len(leg.get_texts()) == 1
+    assert leg.get_texts()[0].get_text() == "patch collection"
+
+    # Check that the legend handle exists and has correct visual properties
+    assert len(leg.legend_handles) == 1
+    legend_patch = leg.legend_handles[0]
+    assert mpl.colors.same_color(legend_patch.get_facecolor(),
+                                  pc.get_facecolor()[0])
+    assert mpl.colors.same_color(legend_patch.get_edgecolor(),
+                                  pc.get_edgecolor()[0])
+    assert legend_patch.get_linewidth() == pc.get_linewidths()[0]
+    assert legend_patch.get_linestyle() == pc.get_linestyles()[0]
+
+
+def test_patchcollection_legend_empty():
+    # Test that empty PatchCollection doesn't crash
+    fig, ax = plt.subplots()
+
+    # Create an empty PatchCollection
+    pc = mcollections.PatchCollection([], label="empty collection")
+    ax.add_collection(pc)
+
+    # This should not crash
+    leg = ax.legend()
+
+    # Check that the label still appears
+    assert len(leg.get_texts()) == 1
+    assert leg.get_texts()[0].get_text() == "empty collection"
+
+    # The legend handle should exist
+    assert len(leg.legend_handles) == 1

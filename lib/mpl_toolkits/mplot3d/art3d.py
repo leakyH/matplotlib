@@ -58,11 +58,11 @@ def get_dir_vector(zdir):
     x, y, z : array
         The direction vector.
     """
-    if zdir == 'x':
+    if cbook._str_equal(zdir, 'x'):
         return np.array((1, 0, 0))
-    elif zdir == 'y':
+    elif cbook._str_equal(zdir, 'y'):
         return np.array((0, 1, 0))
-    elif zdir == 'z':
+    elif cbook._str_equal(zdir, 'z'):
         return np.array((0, 0, 1))
     elif zdir is None:
         return np.array((0, 0, 0))
@@ -123,6 +123,16 @@ class Text3D(mtext.Text):
 
     def __init__(self, x=0, y=0, z=0, text='', zdir='z', axlim_clip=False,
                  **kwargs):
+        if 'rotation' in kwargs:
+            _api.warn_external(
+                "The `rotation` parameter has not yet been implemented "
+                "and is currently ignored."
+            )
+        if 'rotation_mode' in kwargs:
+            _api.warn_external(
+                "The `rotation_mode` parameter has not yet been implemented "
+                "and is currently ignored."
+            )
         mtext.Text.__init__(self, x, y, text, **kwargs)
         self.set_3d_properties(z, zdir, axlim_clip)
 
@@ -737,9 +747,8 @@ class Patch3DCollection(PatchCollection):
         depthshade : bool
             Whether to shade the patches in order to give the appearance of
             depth.
-        depthshade_minalpha : float, default: None
+        depthshade_minalpha : float, default: :rc:`axes3d.depthshade_minalpha`
             Sets the minimum alpha value used by depth-shading.
-            If None, use the value from rcParams['axes3d.depthshade_minalpha'].
 
             .. versionadded:: 3.11
         """
@@ -1112,17 +1121,15 @@ def patch_collection_2d_to_3d(
     zdir : {'x', 'y', 'z'}
         The axis in which to place the patches. Default: "z".
         See `.get_dir_vector` for a description of the values.
-    depthshade : bool, default: None
+    depthshade : bool, default: :rc:`axes3d.depthshade`
         Whether to shade the patches to give a sense of depth.
-        If None, use the value from rcParams['axes3d.depthshade'].
     axlim_clip : bool, default: False
         Whether to hide patches with a vertex outside the axes view limits.
 
         .. versionadded:: 3.10
 
-    depthshade_minalpha : float, default: None
+    depthshade_minalpha : float, default: :rc:`axes3d.depthshade_minalpha`
         Sets the minimum alpha value used by depth-shading.
-        If None, use the value from rcParams['axes3d.depthshade_minalpha'].
 
         .. versionadded:: 3.11
     """

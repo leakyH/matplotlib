@@ -373,7 +373,7 @@ class Colorbar:
             colors=[mpl.rcParams['axes.edgecolor']],
             linewidths=[0.5 * mpl.rcParams['axes.linewidth']],
             clip_on=False)
-        self.ax.add_collection(self.dividers)
+        self.ax.add_collection(self.dividers, autolim=False)
 
         self._locator = None
         self._minorlocator = None
@@ -807,7 +807,7 @@ class Colorbar:
         xy = self.ax.transAxes.inverted().transform(inches.transform(xy))
         col.set_clip_path(mpath.Path(xy, closed=True),
                           self.ax.transAxes)
-        self.ax.add_collection(col)
+        self.ax.add_collection(col, autolim=False)
         self.stale = True
 
     def update_ticks(self):
@@ -1098,7 +1098,7 @@ class Colorbar:
             # If we still aren't scaled after autoscaling, use 0, 1 as default
             self.norm.vmin = 0
             self.norm.vmax = 1
-        self.norm.vmin, self.norm.vmax = mtransforms.nonsingular(
+        self.norm.vmin, self.norm.vmax = mtransforms._nonsingular(
             self.norm.vmin, self.norm.vmax, expander=0.1)
         if (not isinstance(self.norm, colors.BoundaryNorm) and
                 (self.boundaries is None)):

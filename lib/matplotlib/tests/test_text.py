@@ -1,4 +1,6 @@
 from datetime import datetime
+import gc
+import inspect
 import io
 import warnings
 
@@ -137,7 +139,8 @@ def test_multiline():
     ax.set_yticks([])
 
 
-@image_comparison(['multiline2'], style='mpl20')
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
+@image_comparison(['multiline2'], style='mpl20', tol=0.05)
 def test_multiline2():
     # Remove this line when this test image is regenerated.
     plt.rcParams['text.kerning_factor'] = 6
@@ -208,7 +211,8 @@ def test_antialiasing():
     mpl.rcParams['text.antialiased'] = False  # Should not affect existing text.
 
 
-@image_comparison(['text_contains.png'])
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
+@image_comparison(['text_contains.png'], tol=0.05)
 def test_contains():
     fig = plt.figure()
     ax = plt.axes()
@@ -277,7 +281,8 @@ def test_titles():
     ax.set_yticks([])
 
 
-@image_comparison(['text_alignment'], style='mpl20')
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
+@image_comparison(['text_alignment'], style='mpl20', tol=0.08)
 def test_alignment():
     plt.figure()
     ax = plt.subplot(1, 1, 1)
@@ -874,7 +879,12 @@ def test_pdf_chars_beyond_bmp():
 
 @needs_usetex
 def test_metrics_cache():
-    mpl.text._get_text_metrics_with_cache_impl.cache_clear()
+    # dig into the signature to get the mutable default used as a cache
+    renderer_cache = inspect.signature(
+        mpl.text._get_text_metrics_function
+    ).parameters['_cache'].default
+
+    renderer_cache.clear()
 
     fig = plt.figure()
     fig.text(.3, .5, "foo\nbar")
@@ -882,6 +892,8 @@ def test_metrics_cache():
     fig.text(.5, .5, "foo\nbar", usetex=True)
     fig.canvas.draw()
     renderer = fig._get_renderer()
+    assert renderer in renderer_cache
+
     ys = {}  # mapping of strings to where they were drawn in y with draw_tex.
 
     def call(*args, **kwargs):
@@ -897,10 +909,37 @@ def test_metrics_cache():
     # get incorrectly reused by the first TeX string.
     assert len(ys["foo"]) == len(ys["bar"]) == 1
 
-    info = mpl.text._get_text_metrics_with_cache_impl.cache_info()
+    info = renderer_cache[renderer].cache_info()
     # Every string gets a miss for the first layouting (extents), then a hit
     # when drawing, but "foo\nbar" gets two hits as it's drawn twice.
     assert info.hits > info.misses
+
+
+def test_metrics_cache2():
+    # dig into the signature to get the mutable default used as a cache
+    renderer_cache = inspect.signature(
+        mpl.text._get_text_metrics_function
+    ).parameters['_cache'].default
+    gc.collect()
+    renderer_cache.clear()
+
+    def helper():
+        fig, ax = plt.subplots()
+        fig.draw_without_rendering()
+        # show we hit the outer cache
+        assert len(renderer_cache) == 1
+        func = renderer_cache[fig.canvas.get_renderer()]
+        cache_info = func.cache_info()
+        # show we hit the inner cache
+        assert cache_info.currsize > 0
+        assert cache_info.currsize == cache_info.misses
+        assert cache_info.hits > cache_info.misses
+        plt.close(fig)
+
+    helper()
+    gc.collect()
+    # show the outer cache has a lifetime tied to the renderer (via the figure)
+    assert len(renderer_cache) == 0
 
 
 def test_annotate_offset_fontsize():
@@ -1096,8 +1135,9 @@ def test_empty_annotation_get_window_extent():
     assert points[0, 1] == 50.0
 
 
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
 @image_comparison(baseline_images=['basictext_wrap'],
-                  extensions=['png'])
+                  extensions=['png'], tol=0.3)
 def test_basic_wrap():
     fig = plt.figure()
     plt.axis([0, 10, 0, 10])
@@ -1113,8 +1153,9 @@ def test_basic_wrap():
     plt.text(-1, 0, t, ha='left', rotation=-15, wrap=True)
 
 
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
 @image_comparison(baseline_images=['fonttext_wrap'],
-                  extensions=['png'])
+                  extensions=['png'], tol=0.3)
 def test_font_wrap():
     fig = plt.figure()
     plt.axis([0, 10, 0, 10])
@@ -1146,8 +1187,9 @@ def test_va_for_angle():
         assert alignment in ['center', 'top', 'baseline']
 
 
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
 @image_comparison(baseline_images=['xtick_rotation_mode'],
-                  remove_text=False, extensions=['png'], style='mpl20')
+                  remove_text=False, extensions=['png'], style='mpl20', tol=0.3)
 def test_xtick_rotation_mode():
     fig, ax = plt.subplots(figsize=(12, 1))
     ax.set_yticks([])
@@ -1166,8 +1208,9 @@ def test_xtick_rotation_mode():
     plt.subplots_adjust(left=0.01, right=0.99, top=.6, bottom=.4)
 
 
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
 @image_comparison(baseline_images=['ytick_rotation_mode'],
-                  remove_text=False, extensions=['png'], style='mpl20')
+                  remove_text=False, extensions=['png'], style='mpl20', tol=0.3)
 def test_ytick_rotation_mode():
     fig, ax = plt.subplots(figsize=(1, 12))
     ax.set_xticks([])

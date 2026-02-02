@@ -3,6 +3,7 @@ import itertools
 import platform
 import sys
 
+from packaging.version import parse as parse_version
 import pytest
 
 from mpl_toolkits.mplot3d import Axes3D, axes3d, proj3d, art3d
@@ -13,11 +14,11 @@ from matplotlib.backend_bases import (MouseButton, MouseEvent,
 from matplotlib import cm
 from matplotlib import colors as mcolors, patches as mpatch
 from matplotlib.testing.decorators import image_comparison, check_figures_equal
-from matplotlib.testing.widgets import mock_event
 from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.patches import Circle, PathPatch
 from matplotlib.path import Path
 from matplotlib.text import Text
+from matplotlib import  _api
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -181,7 +182,8 @@ def test_bar3d_shaded():
     fig.canvas.draw()
 
 
-@mpl3d_image_comparison(['bar3d_notshaded.png'], style='mpl20')
+@mpl3d_image_comparison(['bar3d_notshaded.png'], style='mpl20',
+                        tol=0.01 if parse_version(np.version.version).major < 2 else 0)
 def test_bar3d_notshaded():
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -285,18 +287,11 @@ def test_contourf3d_extend(fig_test, fig_ref, extend, levels):
     # Z is in the range [0, 8]
     Z = X**2 + Y**2
 
-    # Manually set the over/under colors to be the end of the colormap
-    cmap = mpl.colormaps['viridis'].copy()
-    cmap.set_under(cmap(0))
-    cmap.set_over(cmap(255))
-    # Set vmin/max to be the min/max values plotted on the reference image
-    kwargs = {'vmin': 1, 'vmax': 7, 'cmap': cmap}
-
     ax_ref = fig_ref.add_subplot(projection='3d')
-    ax_ref.contourf(X, Y, Z, levels=[0, 2, 4, 6, 8], **kwargs)
+    ax_ref.contourf(X, Y, Z, levels=[0, 2, 4, 6, 8], vmin=1, vmax=7)
 
     ax_test = fig_test.add_subplot(projection='3d')
-    ax_test.contourf(X, Y, Z, levels, extend=extend, **kwargs)
+    ax_test.contourf(X, Y, Z, levels, extend=extend, vmin=1, vmax=7)
 
     for ax in [ax_ref, ax_test]:
         ax.set_xlim(-2, 2)
@@ -652,7 +647,8 @@ def test_surface3d():
     fig.colorbar(surf, shrink=0.5, aspect=5)
 
 
-@image_comparison(['surface3d_label_offset_tick_position.png'], style='mpl20')
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
+@image_comparison(['surface3d_label_offset_tick_position.png'], style='mpl20', tol=0.07)
 def test_surface3d_label_offset_tick_position():
     plt.rcParams['axes3d.automargin'] = True  # Remove when image is regenerated
     ax = plt.figure().add_subplot(projection="3d")
@@ -748,7 +744,8 @@ def test_surface3d_masked_strides():
     ax.view_init(60, -45, 0)
 
 
-@mpl3d_image_comparison(['text3d.png'], remove_text=False, style='mpl20')
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
+@mpl3d_image_comparison(['text3d.png'], remove_text=False, style='mpl20', tol=0.1)
 def test_text3d():
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -1127,8 +1124,9 @@ def test_poly3dCollection_autoscaling():
     assert np.allclose(ax.get_zlim3d(), (-0.0833333333333333, 4.083333333333333))
 
 
+# TODO: tighten tolerance after baseline image is regenerated for text overhaul
 @mpl3d_image_comparison(['axes3d_labelpad.png'],
-                        remove_text=False, style='mpl20')
+                        remove_text=False, style='mpl20', tol=0.06)
 def test_axes3d_labelpad():
     fig = plt.figure()
     ax = fig.add_axes(Axes3D(fig))
@@ -1218,7 +1216,7 @@ def _test_proj_draw_axes(M, s=1, *args, **kwargs):
 
     fig, ax = plt.subplots(*args, **kwargs)
     linec = LineCollection(lines)
-    ax.add_collection(linec)
+    ax.add_collection(linec, autolim="_datalim_only")
     for x, y, t in zip(txs, tys, ['o', 'x', 'y', 'z']):
         ax.text(x, y, t)
 
@@ -2012,11 +2010,11 @@ def test_rotate(style):
             ax.figure.canvas.draw()
 
             # drag mouse to change orientation
-            ax._button_press(
-                mock_event(ax, button=MouseButton.LEFT, xdata=0, ydata=0))
-            ax._on_move(
-                mock_event(ax, button=MouseButton.LEFT,
-                           xdata=s*dx*ax._pseudo_w, ydata=s*dy*ax._pseudo_h))
+            MouseEvent._from_ax_coords(
+                "button_press_event", ax, (0, 0), MouseButton.LEFT)._process()
+            MouseEvent._from_ax_coords(
+                "motion_notify_event", ax, (s*dx*ax._pseudo_w, s*dy*ax._pseudo_h),
+                MouseButton.LEFT)._process()
             ax.figure.canvas.draw()
 
             c = np.sqrt(3)/2
@@ -2076,10 +2074,10 @@ def test_pan():
     z_center0, z_range0 = convert_lim(*ax.get_zlim3d())
 
     # move mouse diagonally to pan along all axis.
-    ax._button_press(
-        mock_event(ax, button=MouseButton.MIDDLE, xdata=0, ydata=0))
-    ax._on_move(
-        mock_event(ax, button=MouseButton.MIDDLE, xdata=1, ydata=1))
+    MouseEvent._from_ax_coords(
+        "button_press_event", ax, (0, 0), MouseButton.MIDDLE)._process()
+    MouseEvent._from_ax_coords(
+        "motion_notify_event", ax, (1, 1), MouseButton.MIDDLE)._process()
 
     x_center, x_range = convert_lim(*ax.get_xlim3d())
     y_center, y_range = convert_lim(*ax.get_ylim3d())
@@ -2553,11 +2551,10 @@ def test_on_move_vertical_axis(vertical_axis: str) -> None:
     ax.get_figure().canvas.draw()
 
     proj_before = ax.get_proj()
-    event_click = mock_event(ax, button=MouseButton.LEFT, xdata=0, ydata=1)
-    ax._button_press(event_click)
-
-    event_move = mock_event(ax, button=MouseButton.LEFT, xdata=0.5, ydata=0.8)
-    ax._on_move(event_move)
+    MouseEvent._from_ax_coords(
+        "button_press_event", ax, (0, 1), MouseButton.LEFT)._process()
+    MouseEvent._from_ax_coords(
+        "motion_notify_event", ax, (.5, .8), MouseButton.LEFT)._process()
 
     assert ax._axis_names.index(vertical_axis) == ax._vertical_axis
 
@@ -2691,3 +2688,100 @@ def test_ndarray_color_kwargs_value_error():
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(1, 0, 0, color=np.array([0, 0, 0, 1]))
     fig.canvas.draw()
+
+
+def test_line3dcollection_autolim_ragged():
+    """Test Line3DCollection with autolim=True and lines of different lengths."""
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+
+    # Create lines with different numbers of points (ragged arrays)
+    edges = [
+        [(0, 0, 0), (1, 1, 1), (2, 2, 2)],  # 3 points
+        [(0, 1, 0), (1, 2, 1)],             # 2 points
+        [(1, 0, 1), (2, 1, 2), (3, 2, 3), (4, 3, 4)]  # 4 points
+    ]
+
+    # This should not raise an exception.
+    collections = ax.add_collection3d(art3d.Line3DCollection(edges), autolim=True)
+
+    # Check that limits were computed correctly with margins
+    # The limits should include all points with default margins
+    assert np.allclose(ax.get_xlim3d(), (-0.08333333333333333, 4.083333333333333))
+    assert np.allclose(ax.get_ylim3d(), (-0.0625, 3.0625))
+    assert np.allclose(ax.get_zlim3d(), (-0.08333333333333333, 4.083333333333333))
+
+
+def test_axes3d_set_aspect_deperecated_params():
+    """
+    Test that using the deprecated 'anchor' and 'share' kwargs in
+    set_aspect raises the correct warning.
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+
+    # Test that providing the `anchor` parameter raises a deprecation warning.
+    with pytest.warns(_api.MatplotlibDeprecationWarning, match="'anchor' parameter"):
+        ax.set_aspect('equal', anchor='C')
+
+    # Test that using the 'share' parameter is now deprecated.
+    with pytest.warns(_api.MatplotlibDeprecationWarning, match="'share' parameter"):
+        ax.set_aspect('equal', share=True)
+
+    # Test that the `adjustable` parameter is correctly processed to satisfy
+    # code coverage.
+    ax.set_aspect('equal', adjustable='box')
+    assert ax.get_adjustable() == 'box'
+
+    ax.set_aspect('equal', adjustable='datalim')
+    assert ax.get_adjustable() == 'datalim'
+
+    with pytest.raises(ValueError, match="adjustable"):
+        ax.set_aspect('equal', adjustable='invalid_value')
+
+
+def test_axis_get_tightbbox_includes_offset_text():
+    # Test that axis.get_tightbbox includes the offset_text
+    # Regression test for issue #30744
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Create data with high precision values that trigger offset text
+    Z = np.array([[0.1, 0.100000001], [0.100000000001, 0.100000000]])
+    ny, nx = Z.shape
+    x = np.arange(nx)
+    y = np.arange(ny)
+    X, Y = np.meshgrid(x, y)
+
+    ax.plot_surface(X, Y, Z)
+
+    # Force a draw to ensure offset text is created and positioned
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+
+    # Get the z-axis (which should have the offset text)
+    zaxis = ax.zaxis
+
+    # Check that offset text is visible and has content
+    # The offset text may not be visible on all backends/configurations,
+    # so we only test the inclusion when it's actually present
+    if (zaxis.offsetText.get_visible() and
+        zaxis.offsetText.get_text()):
+        offset_bbox = zaxis.offsetText.get_window_extent(renderer)
+
+        # Get the tight bbox - this should include the offset text
+        bbox = zaxis.get_tightbbox(renderer)
+        assert bbox is not None
+        assert offset_bbox is not None
+
+        # The tight bbox should fully contain the offset text bbox
+        # Check that offset_bbox is within bbox bounds (with small tolerance for
+        # floating point errors)
+        assert bbox.x0 <= offset_bbox.x0 + 1e-6, \
+            f"bbox.x0 ({bbox.x0}) should be <= offset_bbox.x0 ({offset_bbox.x0})"
+        assert bbox.y0 <= offset_bbox.y0 + 1e-6, \
+            f"bbox.y0 ({bbox.y0}) should be <= offset_bbox.y0 ({offset_bbox.y0})"
+        assert bbox.x1 >= offset_bbox.x1 - 1e-6, \
+            f"bbox.x1 ({bbox.x1}) should be >= offset_bbox.x1 ({offset_bbox.x1})"
+        assert bbox.y1 >= offset_bbox.y1 - 1e-6, \
+            f"bbox.y1 ({bbox.y1}) should be >= offset_bbox.y1 ({offset_bbox.y1})"
