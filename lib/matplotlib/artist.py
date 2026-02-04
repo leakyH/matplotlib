@@ -1228,19 +1228,18 @@ Supported properties are
         property name for "{prop_name}".
         """
         ret = []
-        with cbook._setattr_cm(self, eventson=False):
-            for k, v in props.items():
-                # Allow attributes we want to be able to update through
-                # art.update, art.set, setp.
-                if k == "axes":
-                    ret.append(setattr(self, k, v))
-                else:
-                    func = getattr(self, f"set_{k}", None)
-                    if not callable(func):
-                        raise AttributeError(
-                            errfmt.format(cls=type(self), prop_name=k),
-                            name=k)
-                    ret.append(func(v))
+        for k, v in props.items():
+            # Allow attributes we want to be able to update through
+            # art.update, art.set, setp.
+            if k == "axes":
+                ret.append(setattr(self, k, v))
+            else:
+                func = getattr(self, f"set_{k}", None)
+                if not callable(func):
+                    raise AttributeError(
+                        errfmt.format(cls=type(self), prop_name=k),
+                        name=k)
+                ret.append(func(v))
         if ret:
             self.pchanged()
             self.stale = True
@@ -1292,14 +1291,17 @@ Supported properties are
     @contextlib.contextmanager
     def _cm_set(self, **kwargs):
         """
-        `.Artist.set` context-manager that restores original values at exit.
+        A context manager to temporarily set artist properties.
+
+        In contrast to `.Artist.set` and for performance, this skips the
+        `normalize_kwargs` check.
         """
         orig_vals = {k: getattr(self, f"get_{k}")() for k in kwargs}
         try:
-            self.set(**kwargs)
+            self._internal_update({k: kwargs[k] for k in orig_vals})
             yield
         finally:
-            self.set(**orig_vals)
+            self._internal_update(orig_vals)
 
     def findobj(self, match=None, include_self=True):
         """
